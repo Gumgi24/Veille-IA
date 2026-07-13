@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Veille IA</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="logo">Veille <span>IA</span></div>
+    <nav class="tabs" id="main-tabs">
+      <button data-view="campaigns" class="active">Campagnes</button>
+      <button data-view="categories">Catégories</button>
+      <button data-view="settings">Réglages</button>
+    </nav>
+  </header>
+
+  <main id="app"></main>
+
+  <div class="toast" id="toast"></div>
+
+  <!-- Campaign create/edit dialog -->
+  <dialog id="campaign-dialog">
+    <h2 id="campaign-dialog-title">Nouvelle campagne</h2>
+    <form id="campaign-form" method="dialog">
+      <div class="form-grid">
+        <label class="field full">Nom
+          <input name="name" required placeholder="Ex : Safran Veille IA">
+        </label>
+        <div class="full">
+          <div class="small muted" style="margin-bottom:6px">Modèles interrogés</div>
+          <div class="pill-set">
+            <label class="check"><input type="checkbox" name="models" value="openai" checked> OpenAI (GPT search)</label>
+            <label class="check"><input type="checkbox" name="models" value="gemini" checked> Gemini</label>
+            <label class="check"><input type="checkbox" name="models" value="anthropic" checked> Claude</label>
+            <label class="check"><input type="checkbox" name="models" value="xai" checked> Grok</label>
+          </div>
+        </div>
+        <label class="field">Heure d'exécution
+          <input name="schedule_time" type="time" value="13:40">
+        </label>
+        <label class="field">Fréquence (tous les N jours)
+          <input name="interval_days" type="number" min="1" value="1">
+        </label>
+        <label class="field">Date de début
+          <input name="start_date" type="date">
+        </label>
+        <label class="field">Date de fin (incluse)
+          <input name="end_date" type="date">
+        </label>
+        <label class="field full">Jeu de catégories
+          <select name="category_set_id"><option value="">— aucun —</option></select>
+        </label>
+      </div>
+      <div class="row" style="justify-content:flex-end">
+        <button type="button" onclick="this.closest('dialog').close()">Annuler</button>
+        <button class="primary" type="submit">Enregistrer</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

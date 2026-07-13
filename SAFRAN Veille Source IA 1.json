@@ -1,0 +1,1521 @@
+{
+  "name": "SAFRAN Veille Source IA 1",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 13,
+              "triggerAtMinute": 40
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -2384,
+        640
+      ],
+      "id": "8f642bf2-e790-41da-976e-1b0aa881deff",
+      "name": "Déclenchement Journalier"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1uWVcyBAObkq26rxCn4FbMByLAbUtf_Rcws719l_cG-Q",
+          "mode": "list",
+          "cachedResultName": "Safran Veille IA",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1uWVcyBAObkq26rxCn4FbMByLAbUtf_Rcws719l_cG-Q/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Prompts",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1uWVcyBAObkq26rxCn4FbMByLAbUtf_Rcws719l_cG-Q/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        -2064,
+        640
+      ],
+      "id": "c0b034c8-0413-40e1-a553-3a0795647a21",
+      "name": "Lecture des lignes du Sheets",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "gksWmc8wK3ffhvEl",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "3da6c91f-f67e-423e-a5f3-5d2377c1f4c1",
+              "name": "réponse",
+              "value": "={{ $json.answer }}",
+              "type": "string"
+            },
+            {
+              "id": "51c2b881-19bb-4581-9431-59bed4525b45",
+              "name": "prompt",
+              "value": "={{ $json.prompt }}",
+              "type": "string"
+            },
+            {
+              "id": "dc85ff6c-eaa2-4fe6-92ab-984fe568625a",
+              "name": "langue",
+              "value": "={{ $json.langue }}",
+              "type": "string"
+            },
+            {
+              "id": "ba02509a-d224-4fe2-9d43-4fc13ed534ab",
+              "name": "URL",
+              "value": "={{ $json.uri }}",
+              "type": "string"
+            },
+            {
+              "id": "5df36c23-fc24-4003-83fa-9fc4041fcdaa",
+              "name": "domaine",
+              "value": "={{ $json.title }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -720,
+        656
+      ],
+      "id": "49b38202-e9ea-41ab-bdfc-554cd15d38c8",
+      "name": "Filtrage des Champs",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c522b652-ad19-446f-ba28-6bd3a2c9a2f1",
+              "name": "réponse",
+              "value": "={{ $json['réponse'] }}",
+              "type": "string"
+            },
+            {
+              "id": "1fc9721b-f793-4be6-a573-4a8a4562af69",
+              "name": "prompt",
+              "value": "={{ $json.prompt }}",
+              "type": "string"
+            },
+            {
+              "id": "3e34432c-3e1e-4feb-9d8d-bc7d96f58a0b",
+              "name": "langue",
+              "value": "={{ $json.langue }}",
+              "type": "string"
+            },
+            {
+              "id": "93c12154-5ede-4198-9551-c4ee38a46c84",
+              "name": "URL",
+              "value": "={{ $json.URL }}",
+              "type": "string"
+            },
+            {
+              "id": "3f35a2b3-c51d-4eb0-a3ba-fb3a2aed4a14",
+              "name": "domaine",
+              "value": "={{ $json.domaine }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -480,
+        640
+      ],
+      "id": "4fe381ec-09bb-4f82-96d5-6fe55d75c6b5",
+      "name": "Répartition des champs Gemini"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Récupère les lignes du Google Sheet\nconst promptItems = $('Lecture des lignes du Sheets').all();\n\nconst newItems = [];\n\n// Utilitaire: extraire domaines\nfunction toDomain(url) {\n  try {\n    let hostname;\n    try {\n      hostname = new URL(url).hostname;\n    } catch {\n      const m = String(url).match(/^https?:\\/\\/([^/?#]+)/i);\n      hostname = m ? m[1] : null;\n    }\n    return hostname ? hostname.replace(/^www\\./, '') : null;\n  } catch { return null; }\n}\n\n// Utilitaire: extraire toutes les URLs d’un contenu texte (Markdown + brut)\nfunction extractUrlsFromText(txt) {\n  if (!txt || typeof txt !== 'string') return [];\n  const urls = [];\n\n  // 1) Liens Markdown: [label](https://example.com/...)\n  const mdRe = /\\]\\((https?:\\/\\/[^\\s)]+)\\)/g;\n  let m;\n  while ((m = mdRe.exec(txt)) !== null) urls.push(m[1]);\n\n  // 2) URLs brutes dans le texte\n  const rawRe = /https?:\\/\\/[^\\s)]+/g;\n  const raws = txt.match(rawRe) || [];\n  for (const u of raws) urls.push(u);\n\n  return urls;\n}\n\nfor (let i = 0; i < items.length; i++) {\n  try {\n    const responseItem = items[i];\n    const promptItem = promptItems[i];\n\n    const currentPrompt = promptItem?.json?.Prompt || `PROMPT INTROUVABLE POUR L'ÉLÉMENT ${i + 1}`;\n    const currentLangue = promptItem?.json?.Langue;\n\n    const rd = responseItem?.json ?? {};\n    let answerText = null;\n\n    // --- Récupérer le texte de réponse (chat.completions)\n    if (Array.isArray(rd.choices) && rd.choices[0]?.message) {\n      const m = rd.choices[0].message;\n      if (Array.isArray(m.content)) {\n        const textPart = m.content.find(p => p?.type === 'text') ?? m.content[0];\n        answerText = typeof textPart === 'string' ? textPart : (textPart?.text ?? null);\n      } else {\n        answerText = typeof m.content === 'string' ? m.content : null;\n      }\n    }\n\n    // --- Collecte d’URLs: 1) objets 'url_citation' dans choices[*]\n    const citationUrls = [];\n    if (Array.isArray(rd.choices)) {\n      for (const ch of rd.choices) {\n        // Quelques proxys mettent { type:'url_citation', url_citation:{ url } }\n        if (ch?.type === 'url_citation' && ch?.url_citation?.url) {\n          citationUrls.push(ch.url_citation.url);\n        }\n        // Parfois directement { url_citation:{ url } } sans 'type'\n        else if (ch?.url_citation?.url) {\n          citationUrls.push(ch.url_citation.url);\n        }\n        // Rare: { annotations:[{url:...}] } au niveau du choice\n        if (Array.isArray(ch?.annotations)) {\n          for (const a of ch.annotations) if (a?.url) citationUrls.push(a.url);\n        }\n      }\n    }\n\n    // --- Collecte d’URLs: 2) liens présents dans le texte markdown\n    const textUrls = extractUrlsFromText(answerText);\n\n    // Fusion + dédoublonnage\n    const uniqueUrls = [...new Set([...citationUrls, ...textUrls])];\n\n    // Domaines uniques\n    const uniqueDomains = [...new Set(uniqueUrls.map(toDomain).filter(Boolean))];\n\n    // Si pas de texte, renvoyer quand même quelque chose de diagnostic\n    if (!answerText) {\n      newItems.push({\n        json: {\n          prompt: currentPrompt,\n          langue: currentLangue,\n          error: \"Aucun texte de réponse détecté dans choices[0].message.content.\",\n          urls: uniqueUrls,\n          domains: uniqueDomains,\n          rawKeys: Object.keys(rd || {}),\n        },\n      });\n      continue;\n    }\n\n    newItems.push({\n      json: {\n        prompt: currentPrompt,\n        langue: currentLangue,\n        answer: answerText,\n        urls: uniqueUrls,\n        domains: uniqueDomains,\n      },\n    });\n\n  } catch (error) {\n    newItems.push({\n      json: {\n        error: `Impossible de traiter l'élément ${i}: ${error.message || String(error)}`,\n      },\n    });\n  }\n}\n\nreturn newItems;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1344,
+        80
+      ],
+      "id": "c381a776-c181-471f-a4f5-328ad2bef969",
+      "name": "Fusion Données Sheets + API OpenAI"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "74105b0d-4e42-46bd-bf9c-d971538a4ea3",
+              "name": "=date",
+              "value": "={{ $items('Déclenchement Journalier')[0].json.timestamp }}",
+              "type": "string"
+            },
+            {
+              "id": "1444ee77-94a2-43c5-a142-2dce1da77195",
+              "name": "réponse",
+              "value": "={{ $json.answer }}",
+              "type": "string"
+            },
+            {
+              "id": "5e34c6ad-f685-49c5-addd-43b403cea0c2",
+              "name": "modèle",
+              "value": "GPT-5",
+              "type": "string"
+            },
+            {
+              "id": "7ef876f6-a01a-4390-8187-752245a981cf",
+              "name": "URLs",
+              "value": "={{ $json.urls }}",
+              "type": "string"
+            },
+            {
+              "id": "ea0514ca-7403-4ef4-8838-1e6064568848",
+              "name": "Domaines",
+              "value": "={{ $json.domains }}",
+              "type": "string"
+            },
+            {
+              "id": "c2d66635-5697-48ba-9ce7-7cf5cb553e27",
+              "name": "Prompt",
+              "value": "={{ $json.prompt }}",
+              "type": "string"
+            },
+            {
+              "id": "28866683-951d-4674-856b-7938fd5340a8",
+              "name": "langue",
+              "value": "={{ $json.langue }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1136,
+        80
+      ],
+      "id": "632582ee-541e-45f5-a10d-ca69dc45d986",
+      "name": "Assignation des champs"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1uWVcyBAObkq26rxCn4FbMByLAbUtf_Rcws719l_cG-Q",
+          "mode": "list",
+          "cachedResultName": "Safran Veille IA",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1uWVcyBAObkq26rxCn4FbMByLAbUtf_Rcws719l_cG-Q/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 932230081,
+          "mode": "list",
+          "cachedResultName": "Résultats",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1uWVcyBAObkq26rxCn4FbMByLAbUtf_Rcws719l_cG-Q/edit#gid=932230081"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date": "={{ $json.date }}",
+            "Modèle": "={{ $json['modèle'] }}",
+            "Prompt": "={{ $json.Prompt }}",
+            "URL": "={{ $json.URL }}",
+            "Domaine": "={{ $json.Domaine }}",
+            "Réponse": "={{ $json['réponse'] }}",
+            "Langue": "={{ $json.langue }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Réponse",
+              "displayName": "Réponse",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Modèle",
+              "displayName": "Modèle",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Prompt",
+              "displayName": "Prompt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Langue",
+              "displayName": "Langue",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "URL",
+              "displayName": "URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Domaine",
+              "displayName": "Domaine",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        -752,
+        80
+      ],
+      "id": "f30bc647-6133-41e6-b2e6-e86a64079ade",
+      "name": "Ajout des lignes GPT-5",
+      "retryOnFail": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "gksWmc8wK3ffhvEl",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -1088,
+        656
+      ],
+      "id": "87beed90-0562-48e3-9a6e-ec8f05cd2024",
+      "name": "Fusion Données Sheets + API Gemini"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prépare une \"boîte\" vide (un tableau) pour ranger tous nos résultats finaux.\nconst newItems = [];\n\n// Démarre une boucle pour traiter chaque \"item\" (chaque ligne de données)\n// qui arrive dans ce nœud, un par un.\nfor (const item of items) {\n  // Ajoute une vérification de sécurité essentielle.\n  // Si un item est vide ou mal formé (par exemple, il lui manque la clé \"json\",\n  // ou la clé \"candidates\" de l'API), on ne peut pas le traiter.\n  if (!item.json || !item.json.candidates || !item.json.candidates[0]) {\n    // On affiche un avertissement dans le journal (logs) pour en garder une trace.\n    console.warn(\"Ignorer un item mal formé ou vide.\");\n    // On arrête le traitement pour *cet* item et on passe directement au suivant dans la boucle.\n    continue;\n  }\n\n  // On \"essaie\" (try) de faire le traitement principal.\n  // C'est un filet de sécurité : si une erreur se produit à l'intérieur de ce bloc\n  // (par exemple, la structure de la réponse a changé), le \"catch\" plus bas\n  // l'interceptera sans faire planter tout le flux de travail.\n  try {\n    // --- 1. Données venant de notre source d'origine (ex: Google Sheet) ---\n    // On récupère la colonne \"Prompts\" qui était attachée à cet item.\n    // S'il ne la trouve pas (||), on met un texte d'erreur pour être au courant.\n    const prompt = item.json.Prompt || 'PROMPT INTROUVABLE';\n    // On fait pareil pour la colonne \"Langue\".\n    const langue = item.json.Langue || 'LANGUE INTROUVABLE';\n\n    // --- 2. Données venant de la réponse de l'API Gemini ---\n    // On \"plonge\" dans la structure complexe de la réponse pour extraire le texte de la réponse principale.\n    const answer = item.json.candidates[0].content.parts[0].text;\n    \n    // On fait de même pour trouver les \"groundingChunks\".\n    // Ce sont les *sources* (citations, pages web) que l'IA a utilisées pour générer sa réponse.\n    const groundingChunks = item.json.candidates[0].groundingMetadata.groundingChunks;\n\n    // --- 3. Logique de traitement (le cœur du nœud) ---\n\n    // CONDITION : Est-ce que l'IA a fourni des sources ?\n    // (La liste \"groundingChunks\" existe-t-elle et n'est-elle pas vide ?)\n    if (groundingChunks && groundingChunks.length > 0) {\n      \n      // OUI, des sources existent : On va créer une ligne *par source*.\n      // S'il y a 3 sources, on créera 3 nouvelles lignes.\n      \n      // On démarre une *sous-boucle* : pour chaque source (\"chunk\") dans la liste des sources...\n      for (const chunk of groundingChunks) {\n        // ...on ajoute une nouvelle ligne à notre boîte de résultats \"newItems\".\n        newItems.push({\n          json: {\n            prompt: prompt,     // Le prompt (sera le même pour chaque ligne éclatée)\n            langue: langue,     // La langue (sera la même)\n            answer: answer,     // La réponse de l'IA (sera la même)\n            model: \"Gemini-2.5-flash\", // On note le modèle utilisé\n            uri: chunk.web.uri, // L'URL (le lien) de la source spécifique\n            title: chunk.web.title // Le titre de la page de la source\n          }\n        });\n      }\n    } else {\n      // NON, il n'y a aucune source pour cette réponse.\n      \n      // On crée une *seule* ligne pour cette réponse, sans information de source.\n      newItems.push({\n        json: {\n          prompt: prompt,\n          langue: langue,\n          answer: answer,\n          model: \"Gemini-2.5-flash\",\n          uri: \"\",   // On laisse le champ de l'URL vide\n          title: \"\" // On laisse le champ du titre vide\n        }\n      });\n    }\n  } catch (error) {\n    // C'est la deuxième partie de notre filet de sécurité (le \"catch\").\n    // Si quelque chose a mal tourné DANS le \"try\" (par exemple, la structure\n    // de 'candidates[0].content' a changé et le code n'a pas trouvé '.text')...\n    // ...on enregistre l'erreur pour savoir ce qui s'est passé...\n    console.error(\"Une erreur est survenue lors du traitement d'un item:\", error);\n    // ...et on continue la boucle principale. L'item en erreur est ignoré,\n    // mais le flux de travail ne s'arrête pas.\n  }\n}\n\n// Une fois que la boucle a traité TOUS les items...\n// On renvoie la \"boîte\" `newItems` qui contient maintenant la liste complète\n// de toutes nos nouvelles lignes (éclatées par source ou non).\nreturn newItems;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -896,
+        656
+      ],
+      "id": "f0a13ee6-e589-4a95-98a4-a03c5cd5c276",
+      "name": "Création Lignes par Source (Gemini)"
+    },
+    {
+      "parameters": {
+        "jsCode": "const newItems = [];\n\nfor (const item of items) {\n  try {\n    const originalJson = item.json;\n    const urls = JSON.parse(originalJson.URLs);\n\n    const parentData = {\n      date: originalJson.date,\n      réponse: originalJson.réponse,\n      modèle: originalJson.modèle,\n      Prompt: originalJson.Prompt,\n      langue: originalJson.langue\n    };\n\n    for (const url of urls) {\n      let domaine = \"EXTRACTION_ECHOUÉE\";\n\n      let cleanUrl = url.trim()\n        .replace('?utm_source=openai', '')\n        .replace('&utm_source=openai', '');\n\n      try {\n        let hostname = null;\n        const matches = cleanUrl.match(/^https?:\\/\\/([^/?#]+)/i);\n\n        if (matches && matches[1]) {\n          hostname = matches[1];\n        }\n\n        if (hostname) {\n          domaine = hostname.replace(/^www\\./, '');\n        }\n      } catch (e) {\n        console.error(`Erreur en traitant l'URL \"${url}\":`, e.message);\n      }\n\n      const newItem = {\n        json: {\n          ...parentData,\n          URL: cleanUrl,\n          Domaine: domaine\n        }\n      };\n\n      newItems.push(newItem);\n    }\n\n  } catch (error) {\n    console.error(\"Échec du traitement d'un item (ligne) :\", error);\n  }\n}\n\nreturn newItems;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -944,
+        80
+      ],
+      "id": "cd83dae6-7d04-4a62-8549-f4dfa3fef5aa",
+      "name": "Séparation Lignes par URL (GPT)"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1uWVcyBAObkq26rxCn4FbMByLAbUtf_Rcws719l_cG-Q",
+          "mode": "list",
+          "cachedResultName": "Safran Veille IA",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1uWVcyBAObkq26rxCn4FbMByLAbUtf_Rcws719l_cG-Q/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 932230081,
+          "mode": "list",
+          "cachedResultName": "Résultats",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1uWVcyBAObkq26rxCn4FbMByLAbUtf_Rcws719l_cG-Q/edit#gid=932230081"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Prompt": "={{ $json.prompt }}",
+            "Langue": "={{ $json.langue }}",
+            "Date": "={{ $now.toISO() }}",
+            "Réponse": "={{ $json['réponse'] }}",
+            "Modèle": "gemini-3-flash",
+            "URL": "={{ $json.URL }}",
+            "Domaine": "={{ $json.domaine }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Réponse",
+              "displayName": "Réponse",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Modèle",
+              "displayName": "Modèle",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Prompt",
+              "displayName": "Prompt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Langue",
+              "displayName": "Langue",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "URL",
+              "displayName": "URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Domaine",
+              "displayName": "Domaine",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "useAppend": true
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        -288,
+        640
+      ],
+      "id": "ede95446-ca2e-4610-bf38-67e72a8daeaf",
+      "name": "Ajout des lignes Gemini",
+      "retryOnFail": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "gksWmc8wK3ffhvEl",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -1584,
+        208
+      ],
+      "id": "b485a403-b8f6-4b6d-a0ae-faa24fd0103a",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "amount": 1
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -1200,
+        272
+      ],
+      "id": "167dcff8-494c-4cfa-a9e5-caeb134c4d18",
+      "name": "Wait",
+      "webhookId": "f3c68895-e00e-4095-93bc-9a9382fc0ac1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"gpt-5-search-api\",\n  \"messages\": [\n    {\n      \"role\": \"developer\",\n      \"content\": \"You are a helpful assistant. Always look for sources online.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"{{ $json.Prompt }}\"\n    }\n  ]\n} ",
+        "options": {
+          "proxy": "={{ $json.LOC }}"
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1344,
+        272
+      ],
+      "id": "32358d7d-81a4-41cb-bbc1-fff04c658400",
+      "name": "API OpenAI",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "credentials": {
+        "openAiApi": {
+          "id": "kBNgtYasUWgvHT1Z",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -1376,
+        784
+      ],
+      "id": "c240c4d3-19cf-4cfe-803f-4801c49d0190",
+      "name": "Loop Over Items1"
+    },
+    {
+      "parameters": {
+        "amount": 1
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -912,
+        848
+      ],
+      "id": "28c8e0e9-3342-4da9-8c23-82fc361e535c",
+      "name": "Wait1",
+      "webhookId": "3f359f21-71c1-4105-88bb-b117681550c2"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-goog-api-key",
+              "value": "GOOGLE_API_KEY_REDACTED"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [\n    {\n      \"parts\": [\n        {\n          \"text\": \"You are Gemini, a helpful AI assistant built by Google. Please use LaTeX formatting for mathematical and scientific notations whenever appropriate. Enclose all LaTeX using '$' or '$$' delimiters. NEVER generate LaTeX code in a latex block unless the user explicitly asks for it. DO NOT use LaTeX for regular prose (e.g., resumes, letters, essays, CVs, etc.). {{ $json.Prompt }}\"\n        }\n      ]\n    }\n  ],\n  \"tools\": [\n    {\n      \"google_search\": {}\n    }\n  ]\n}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1
+            }
+          },
+          "proxy": "={{ $json.LOC }}"
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1088,
+        848
+      ],
+      "id": "09758bf0-6b1f-43d8-acf0-d3a42bf534ae",
+      "name": "Requête API Gemini-3-flash",
+      "retryOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "ANTHROPIC_API_KEY_REDACTED"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 8192,\n  \"tools\": [\n    {\n      \"type\": \"web_search_20260209\",\n      \"name\": \"web_search\",\n      \"max_uses\": 3\n    },\n    {\n      \"type\": \"code_execution\",\n      \"name\": \"code_execution\"\n    }\n  ],\n  \"system\": \"Do not output reasoning, thinking, analysis, or progress notes. Do not say that you are searching. Return only the final answer to the user, with citations when web search is used.\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"{{ $json.Prompt }}\"\n    }\n  ]\n}",
+        "options": {
+          "batching": {
+            "batch": {}
+          },
+          "proxy": "={{ $json.LOC }}"
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -1568,
+        1376
+      ],
+      "id": "6afdc4a7-6d19-40bf-a284-0c945caa04f2",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -1328,
+        1216
+      ],
+      "id": "4f9ea905-fc45-49f9-a72d-5dfd4bcef9bf",
+      "name": "Fusion Données Sheets + API Claude"
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputItems = $input.all();\n\nfunction asClaudeMessage(json) {\n  // Handles:\n  // 1) combined object: { Prompt, Langue, model, content, ... }\n  // 2) raw Anthropic object: { model, content, ... }\n  // 3) pasted array: [ { model, content, ... } ]\n  // 4) wrapped HTTP output: { body: { ... } } or { data: { ... } }\n\n  if (Array.isArray(json)) return json[0] ?? {};\n\n  if (Array.isArray(json?.content)) return json;\n\n  if (json?.body) return asClaudeMessage(json.body);\n  if (json?.data) return asClaudeMessage(json.data);\n  if (json?.response) return asClaudeMessage(json.response);\n\n  return json ?? {};\n}\n\nfunction getPrompt(json) {\n  return (\n    json.Prompt ??\n    json.prompt ??\n    json.body?.Prompt ??\n    json.body?.prompt ??\n    json.data?.Prompt ??\n    json.data?.prompt ??\n    \"\"\n  );\n}\n\nfunction getLanguage(json) {\n  return (\n    json.Langue ??\n    json.langue ??\n    json.language ??\n    json.body?.Langue ??\n    json.body?.langue ??\n    json.body?.language ??\n    json.data?.Langue ??\n    json.data?.langue ??\n    json.data?.language ??\n    \"\"\n  );\n}\n\nfunction pad(number, size = 2) {\n  return String(number).padStart(size, \"0\");\n}\n\nfunction getParisNowIso() {\n  const now = new Date();\n\n  const parts = new Intl.DateTimeFormat(\"en-CA\", {\n    timeZone: \"Europe/Paris\",\n    year: \"numeric\",\n    month: \"2-digit\",\n    day: \"2-digit\",\n    hour: \"2-digit\",\n    minute: \"2-digit\",\n    second: \"2-digit\",\n    hour12: false,\n  }).formatToParts(now);\n\n  const map = {};\n  for (const part of parts) {\n    map[part.type] = part.value;\n  }\n\n  // Europe/Paris is UTC+1 or UTC+2 depending on daylight saving time.\n  const parisAsUtc = Date.UTC(\n    Number(map.year),\n    Number(map.month) - 1,\n    Number(map.day),\n    Number(map.hour),\n    Number(map.minute),\n    Number(map.second)\n  );\n\n  const offsetMinutes = Math.round((parisAsUtc - now.getTime()) / 60000);\n  const sign = offsetMinutes >= 0 ? \"+\" : \"-\";\n  const absOffset = Math.abs(offsetMinutes);\n  const offsetHours = pad(Math.floor(absOffset / 60));\n  const offsetMins = pad(absOffset % 60);\n\n  return `${map.year}-${map.month}-${map.day}T${map.hour}:${map.minute}:${map.second}.${pad(now.getMilliseconds(), 3)}${sign}${offsetHours}:${offsetMins}`;\n}\n\nfunction getDate(json) {\n  return (\n    json.time ??\n    json.timestamp ??\n    json.date ??\n    json.created_at ??\n    json.startedAt ??\n    json.body?.time ??\n    json.body?.timestamp ??\n    json.body?.date ??\n    json.body?.created_at ??\n    getParisNowIso()\n  );\n}\n\nfunction getDomain(url) {\n  if (!url) return \"\";\n\n  try {\n    return new URL(url).hostname.replace(/^www\\./, \"\");\n  } catch {\n    return url\n      .replace(/^https?:\\/\\//, \"\")\n      .replace(/^www\\./, \"\")\n      .split(\"/\")[0]\n      .split(\"?\")[0]\n      .split(\"#\")[0];\n  }\n}\n\nfunction cleanAnswerText(text) {\n  return text\n    .replace(/\\r?\\n+/g, \" \")   // remove \\n and line breaks\n    .replace(/---+/g, \" \")     // remove Markdown separators\n    .replace(/\\s+/g, \" \")      // collapse repeated spaces\n    .trim();\n}\n\nfunction extractText(content) {\n  return cleanAnswerText(\n    content\n      .filter(block => block?.type === \"text\")\n      .map(block => block.text ?? \"\")\n      .join(\"\")\n  );\n}\n\nfunction extractUrls(content) {\n  const urls = [];\n\n  for (const block of content) {\n    if (block?.type !== \"web_search_tool_result\") continue;\n\n    const results = block.content ?? [];\n\n    for (const result of results) {\n      if (result?.type === \"web_search_result\" && result.url) {\n        urls.push(result.url);\n      }\n    }\n  }\n\n  return [...new Set(urls)];\n}\n\nconst output = [];\n\nfor (const item of inputItems) {\n  const original = item.json;\n  const msg = asClaudeMessage(original);\n  const content = msg.content ?? [];\n\n  const responseText = extractText(content);\n  const urls = extractUrls(content);\n\n  const baseRow = {\n    \"Date\": getDate(original),\n    \"Réponse\": responseText,\n    \"Modèle\": msg.model ?? original.model ?? \"\",\n    \"Prompt\": getPrompt(original),\n    \"Langue\": getLanguage(original),\n  };\n\n  // Optional: preserve the original row number from Google Sheets / Airtable\n  if (original.row_number !== undefined) {\n    baseRow.row_number = original.row_number;\n  }\n\n  // One row per source URL\n  if (urls.length > 0) {\n    for (const url of urls) {\n      output.push({\n        json: {\n          ...baseRow,\n          \"URL\": url,\n          \"Domaine\": getDomain(url),\n        },\n      });\n    }\n  } else {\n    output.push({\n      json: {\n        ...baseRow,\n        \"URL\": \"\",\n        \"Domaine\": \"\",\n      },\n    });\n  }\n}\n\nreturn output;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1120,
+        1216
+      ],
+      "id": "ed1fdd43-46c7-421b-b27f-aa54462ba81b",
+      "name": "Assignation des champs depûis JSON"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c522b652-ad19-446f-ba28-6bd3a2c9a2f1",
+              "name": "réponse",
+              "value": "={{ $json['Réponse'] }}",
+              "type": "string"
+            },
+            {
+              "id": "1fc9721b-f793-4be6-a573-4a8a4562af69",
+              "name": "prompt",
+              "value": "={{ $json.Prompt }}",
+              "type": "string"
+            },
+            {
+              "id": "3e34432c-3e1e-4feb-9d8d-bc7d96f58a0b",
+              "name": "langue",
+              "value": "={{ $json.Langue }}",
+              "type": "string"
+            },
+            {
+              "id": "93c12154-5ede-4198-9551-c4ee38a46c84",
+              "name": "URL",
+              "value": "={{ $json.URL }}",
+              "type": "string"
+            },
+            {
+              "id": "3f35a2b3-c51d-4eb0-a3ba-fb3a2aed4a14",
+              "name": "domaine",
+              "value": "={{ $json.Domaine }}",
+              "type": "string"
+            },
+            {
+              "id": "a4e06836-b446-4400-b07c-1208f90d54b7",
+              "name": "Modèle",
+              "value": "={{ $json['Modèle'] }}",
+              "type": "string"
+            },
+            {
+              "id": "e852d788-7958-4460-927f-c7b7de1666cb",
+              "name": "date",
+              "value": "={{ $json.Date }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -928,
+        1216
+      ],
+      "id": "ae9b02fa-f06a-4db1-a473-c5cbf7fe4f2b",
+      "name": "Répartition des champs Claude"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1uWVcyBAObkq26rxCn4FbMByLAbUtf_Rcws719l_cG-Q",
+          "mode": "list",
+          "cachedResultName": "Safran Veille IA",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1uWVcyBAObkq26rxCn4FbMByLAbUtf_Rcws719l_cG-Q/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 932230081,
+          "mode": "list",
+          "cachedResultName": "Résultats",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1uWVcyBAObkq26rxCn4FbMByLAbUtf_Rcws719l_cG-Q/edit#gid=932230081"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date": "={{ $json.date }}",
+            "Réponse": "={{ $json['réponse'] }}",
+            "Prompt": "={{ $json.prompt }}",
+            "Modèle": "={{ $json['Modèle'] }}",
+            "Langue": "={{ $json.langue }}",
+            "URL": "={{ $json.URL }}",
+            "Domaine": "={{ $json.domaine }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Réponse",
+              "displayName": "Réponse",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Modèle",
+              "displayName": "Modèle",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Prompt",
+              "displayName": "Prompt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Langue",
+              "displayName": "Langue",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "URL",
+              "displayName": "URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Domaine",
+              "displayName": "Domaine",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        -736,
+        1216
+      ],
+      "id": "90304a9c-bc8a-481c-990b-e19a8524b79d",
+      "name": "Ajout des lignes Claude",
+      "retryOnFail": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "gksWmc8wK3ffhvEl",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -1920,
+        1696
+      ],
+      "id": "e94d79e5-72e6-496a-90e7-ea490b1cb23e",
+      "name": "Loop Over Items2"
+    },
+    {
+      "parameters": {
+        "amount": 1
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -1568,
+        1856
+      ],
+      "id": "c9721f39-7ada-43e6-8327-bdae6d3ced29",
+      "name": "Wait2",
+      "webhookId": "eca1926f-3f8e-4cd9-b0bb-ae67bfe91cef"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code node (Run Once for All Items)\n\nconst inputItems = $input.all();\nconst out = [];\n\nfunction toDomain(url) {\n  try {\n    return new URL(url).hostname.replace(/^www\\./i, '');\n  } catch (e) {\n    // Fallback for odd / malformed strings\n    return String(url)\n      .replace(/^https?:\\/\\//i, '')\n      .split('/')[0]\n      .replace(/^www\\./i, '');\n  }\n}\n\nfor (const item of inputItems) {\n  const data = item.json ?? {};\n  const prompt = data.Prompt ?? data.prompt ?? '';\n\n  // Collect ALL assistant output_text blocks (just in case there are multiple)\n  const outputTexts = [];\n  const urls = [];\n\n  const outputArr = Array.isArray(data.output) ? data.output : [];\n  for (const block of outputArr) {\n    if (block?.type !== 'message' || block?.role !== 'assistant') continue;\n\n    const contentArr = Array.isArray(block.content) ? block.content : [];\n    for (const c of contentArr) {\n      if (c?.type !== 'output_text') continue;\n\n      if (typeof c.text === 'string') outputTexts.push(c.text);\n\n      // Preferred: use structured annotations (url_citation)\n      const anns = Array.isArray(c.annotations) ? c.annotations : [];\n      for (const ann of anns) {\n        if (ann?.type === 'url_citation' && ann.url) {\n          urls.push(ann.url);\n        }\n      }\n    }\n  }\n\n  const output_text = outputTexts.join('\\n\\n');\n\n  // Fallbacks if annotations weren’t present\n  if (urls.length === 0 && Array.isArray(data.citations)) {\n    urls.push(...data.citations);\n  }\n  if (urls.length === 0 && output_text) {\n    // Pull URLs from markdown links like [[1]](https://...)\n    const re = /\\((https?:\\/\\/[^\\s)]+)\\)/g;\n    let m;\n    while ((m = re.exec(output_text)) !== null) urls.push(m[1]);\n  }\n\n  // One item per UNIQUE url\n  const uniqueUrls = [...new Set(urls)];\n\n  for (const url of uniqueUrls) {\n    out.push({\n      json: {\n        prompt,\n        output_text,\n        url,\n        domain: toDomain(url),\n      },\n    });\n  }\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1472,
+        1664
+      ],
+      "id": "88393dbb-8848-400e-8029-fb512f7699e9",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "3da6c91f-f67e-423e-a5f3-5d2377c1f4c1",
+              "name": "réponse",
+              "value": "={{ $json.output_text }}",
+              "type": "string"
+            },
+            {
+              "id": "51c2b881-19bb-4581-9431-59bed4525b45",
+              "name": "prompt",
+              "value": "={{ $json.prompt }}",
+              "type": "string"
+            },
+            {
+              "id": "5df36c23-fc24-4003-83fa-9fc4041fcdaa",
+              "name": "domaine",
+              "value": "={{ $json.domain }}",
+              "type": "string"
+            },
+            {
+              "id": "fbaa9c3e-c287-43e6-a182-d7c50fed3dc1",
+              "name": "URL",
+              "value": "={{ $json.url }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1280,
+        1664
+      ],
+      "id": "bf20a2a3-4a9e-4368-b9fc-b9e342b048b7",
+      "name": "Filtrage des Champs1",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.x.ai/v1/responses",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer XAI_API_KEY_REDACTED"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"grok-4-1-fast\",\n  \"input\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"{{ $json.Prompt }}\"\n    }\n  ],\n  \"tools\": [\n    {\n      \"type\": \"web_search\"\n    }\n  ]\n}",
+        "options": {
+          "proxy": "={{ $json.LOC }}"
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -1776,
+        1856
+      ],
+      "id": "091ad750-5915-4a7a-a123-091dbe8ba05a",
+      "name": "Requête Grok"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1uWVcyBAObkq26rxCn4FbMByLAbUtf_Rcws719l_cG-Q",
+          "mode": "list",
+          "cachedResultName": "Safran Veille IA",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1uWVcyBAObkq26rxCn4FbMByLAbUtf_Rcws719l_cG-Q/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 932230081,
+          "mode": "list",
+          "cachedResultName": "Résultats",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1uWVcyBAObkq26rxCn4FbMByLAbUtf_Rcws719l_cG-Q/edit#gid=932230081"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Réponse": "={{ $json['réponse'] }}",
+            "Prompt": "={{ $json.prompt }}",
+            "Modèle": "Grok 4.1 Flash",
+            "Date": "={{ $now.toISO() }}",
+            "URL": "={{ $json.URL }}",
+            "Langue": "Français",
+            "Domaine": "={{ $json.domaine }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Réponse",
+              "displayName": "Réponse",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Modèle",
+              "displayName": "Modèle",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Prompt",
+              "displayName": "Prompt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Langue",
+              "displayName": "Langue",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "URL",
+              "displayName": "URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Domaine",
+              "displayName": "Domaine",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        -1008,
+        1648
+      ],
+      "id": "e1073134-bb81-4880-8e6f-98bd9c399a15",
+      "name": "Ajout des lignes Grok",
+      "retryOnFail": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "gksWmc8wK3ffhvEl",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -1680,
+        1664
+      ],
+      "id": "4fabff6f-a521-4b63-b28d-a63b7de34020",
+      "name": "Fusion Données Sheets + API Grok"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -1696,
+        1248
+      ],
+      "id": "6023e1ae-314c-4174-b33c-aa7a4793e3aa",
+      "name": "Loop Over Items3"
+    },
+    {
+      "parameters": {
+        "amount": 1
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -1440,
+        1376
+      ],
+      "id": "f42de3b9-ca59-4306-9b4b-19b951d0553e",
+      "name": "Wait3",
+      "webhookId": "eca1926f-3f8e-4cd9-b0bb-ae67bfe91cef"
+    }
+  ],
+  "pinData": {
+    "Déclenchement Journalier": [
+      {
+        "json": {
+          "isArtificialRecoveredEventItem": true
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Déclenchement Journalier": {
+      "main": [
+        [
+          {
+            "node": "Lecture des lignes du Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lecture des lignes du Sheets": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fusion Données Sheets + API Gemini",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fusion Données Sheets + API Claude",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Loop Over Items2",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Loop Over Items3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrage des Champs": {
+      "main": [
+        [
+          {
+            "node": "Répartition des champs Gemini",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Répartition des champs Gemini": {
+      "main": [
+        [
+          {
+            "node": "Ajout des lignes Gemini",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fusion Données Sheets + API OpenAI": {
+      "main": [
+        [
+          {
+            "node": "Assignation des champs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assignation des champs": {
+      "main": [
+        [
+          {
+            "node": "Séparation Lignes par URL (GPT)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fusion Données Sheets + API Gemini": {
+      "main": [
+        [
+          {
+            "node": "Création Lignes par Source (Gemini)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Création Lignes par Source (Gemini)": {
+      "main": [
+        [
+          {
+            "node": "Filtrage des Champs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Séparation Lignes par URL (GPT)": {
+      "main": [
+        [
+          {
+            "node": "Ajout des lignes GPT-5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ajout des lignes Gemini": {
+      "main": [
+        []
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "Fusion Données Sheets + API OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "API OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API OpenAI": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items1": {
+      "main": [
+        [
+          {
+            "node": "Fusion Données Sheets + API Gemini",
+            "type": "main",
+            "index": 1
+          }
+        ],
+        [
+          {
+            "node": "Requête API Gemini-3-flash",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Requête API Gemini-3-flash": {
+      "main": [
+        [
+          {
+            "node": "Wait1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Wait3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fusion Données Sheets + API Claude": {
+      "main": [
+        [
+          {
+            "node": "Assignation des champs depûis JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assignation des champs depûis JSON": {
+      "main": [
+        [
+          {
+            "node": "Répartition des champs Claude",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Répartition des champs Claude": {
+      "main": [
+        [
+          {
+            "node": "Ajout des lignes Claude",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items2": {
+      "main": [
+        [
+          {
+            "node": "Fusion Données Sheets + API Grok",
+            "type": "main",
+            "index": 1
+          }
+        ],
+        [
+          {
+            "node": "Requête Grok",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait2": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Filtrage des Champs1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrage des Champs1": {
+      "main": [
+        [
+          {
+            "node": "Ajout des lignes Grok",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Requête Grok": {
+      "main": [
+        [
+          {
+            "node": "Wait2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fusion Données Sheets + API Grok": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items3": {
+      "main": [
+        [
+          {
+            "node": "Fusion Données Sheets + API Claude",
+            "type": "main",
+            "index": 1
+          }
+        ],
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait3": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "accc543a-badd-4cff-981d-de8d5f72e198",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "81fc2e699c7c76eeb5d92657d0a73803d4c38cc91d1d2d1bbfaca555d1a1da1f"
+  },
+  "id": "8SoVjqjKnzNaEapt",
+  "tags": [
+    {
+      "updatedAt": "2025-10-30T15:11:41.573Z",
+      "createdAt": "2025-10-30T15:11:41.573Z",
+      "id": "840Qy7PEiiTEZ2yH",
+      "name": "Veille IA"
+    }
+  ]
+}
