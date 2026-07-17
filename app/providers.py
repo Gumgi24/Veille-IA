@@ -1,7 +1,11 @@
 """Provider clients for the four AI APIs used by the veille workflow.
 
-Each call_* function sends one prompt to one provider and returns:
-    {"model": <label written in the output>, "answer": str, "urls": [str, ...]}
+Each provider is split into three parts so the live path and the Batch API
+path (batch.py) share the exact same request/response logic:
+
+    build_*_body(settings, prompt) -> dict   request body (same shape live/batch)
+    parse_*_data(settings, data)   -> {"model", "answer", "urls"}
+    call_*(client, settings, prompt)         live HTTP call = build + post + parse
 
 They mirror the requests of the original n8n workflow (web search enabled on
 every provider, one output row per cited source downstream).
@@ -84,25 +88,27 @@ def _raise_for_status(resp: httpx.Response, provider: str) -> None:
 
 # ---------------------------------------------------------------- OpenAI
 
-async def call_openai(client: httpx.AsyncClient, settings: dict, prompt: str) -> dict:
-    model = settings["openai_model"]
-    resp = await client.post(
-        "https://api.openai.com/v1/chat/completions",
-        headers={"Authorization": f"Bearer {settings['openai_api_key']}"},
-        json={
-            "model": model,
-            "messages": [
-                {
-                    "role": "developer",
-                    "content": "You are a helpful assistant. Always look for sources online.",
-                },
-                {"role": "user", "content": prompt},
-            ],
-        },
-    )
-    _raise_for_status(resp, "openai")
-    data = resp.json()
+OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 
+
+def openai_headers(settings: dict) -> dict:
+    return {"Authorization": f"Bearer {settings['openai_api_key']}"}
+
+
+def build_openai_body(settings: dict, prompt: str) -> dict:
+    return {
+        "model": settings["openai_model"],
+        "messages": [
+            {
+                "role": "developer",
+                "content": "You are a helpful assistant. Always look for sources online.",
+            },
+            {"role": "user", "content": prompt},
+        ],
+    }
+
+
+def parse_openai_data(settings: dict, data: dict) -> dict:
     answer = ""
     urls: list[str] = []
     for choice in data.get("choices", []):
@@ -130,12 +136,23 @@ async def call_openai(client: httpx.AsyncClient, settings: dict, prompt: str) ->
 
     urls += urls_from_text(answer)
     urls = [clean_openai_url(u) for u in urls]
-    return {"model": model, "answer": answer, "urls": dedupe(urls)}
+    return {"model": settings["openai_model"], "answer": answer, "urls": dedupe(urls)}
+
+
+async def call_openai(client: httpx.AsyncClient, settings: dict, prompt: str) -> dict:
+    resp = await client.post(
+        OPENAI_URL,
+        headers=openai_headers(settings),
+        json=build_openai_body(settings, prompt),
+    )
+    _raise_for_status(resp, "openai")
+    return parse_openai_data(settings, resp.json())
 
 
 # ---------------------------------------------------------------- Gemini
 
 VERTEX_REDIRECT_HOST = "vertexaisearch.cloud.google.com"
+GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta"
 
 # Same preamble the n8n workflow prepended, to reproduce consumer-Gemini behavior.
 GEMINI_PREAMBLE = (
@@ -147,19 +164,18 @@ GEMINI_PREAMBLE = (
 )
 
 
-async def call_gemini(client: httpx.AsyncClient, settings: dict, prompt: str) -> dict:
-    model = settings["gemini_model"]
-    resp = await client.post(
-        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
-        headers={"x-goog-api-key": settings["gemini_api_key"]},
-        json={
-            "contents": [{"parts": [{"text": GEMINI_PREAMBLE + prompt}]}],
-            "tools": [{"google_search": {}}],
-        },
-    )
-    _raise_for_status(resp, "gemini")
-    data = resp.json()
+def gemini_headers(settings: dict) -> dict:
+    return {"x-goog-api-key": settings["gemini_api_key"]}
 
+
+def build_gemini_body(settings: dict, prompt: str) -> dict:
+    return {
+        "contents": [{"parts": [{"text": GEMINI_PREAMBLE + prompt}]}],
+        "tools": [{"google_search": {}}],
+    }
+
+
+def parse_gemini_data(settings: dict, data: dict) -> dict:
     candidates = data.get("candidates") or []
     if not candidates:
         raise ProviderError("gemini: no candidates in response", detail=data)
@@ -177,36 +193,49 @@ async def call_gemini(client: httpx.AsyncClient, settings: dict, prompt: str) ->
         if uri:
             urls.append(uri)
 
-    return {"model": model, "answer": answer, "urls": dedupe(urls)}
+    return {"model": settings["gemini_model"], "answer": answer, "urls": dedupe(urls)}
+
+
+async def call_gemini(client: httpx.AsyncClient, settings: dict, prompt: str) -> dict:
+    model = settings["gemini_model"]
+    resp = await client.post(
+        f"{GEMINI_BASE}/models/{model}:generateContent",
+        headers=gemini_headers(settings),
+        json=build_gemini_body(settings, prompt),
+    )
+    _raise_for_status(resp, "gemini")
+    return parse_gemini_data(settings, resp.json())
 
 
 # ---------------------------------------------------------------- Anthropic
 
-async def call_anthropic(client: httpx.AsyncClient, settings: dict, prompt: str) -> dict:
-    model = settings["anthropic_model"]
-    resp = await client.post(
-        "https://api.anthropic.com/v1/messages",
-        headers={
-            "x-api-key": settings["anthropic_api_key"],
-            "anthropic-version": "2023-06-01",
-        },
-        json={
-            "model": model,
-            "max_tokens": 8192,
-            "tools": [
-                {"type": "web_search_20260209", "name": "web_search", "max_uses": 3}
-            ],
-            "system": (
-                "Do not output reasoning, thinking, analysis, or progress notes. "
-                "Do not say that you are searching. Return only the final answer "
-                "to the user, with citations when web search is used."
-            ),
-            "messages": [{"role": "user", "content": prompt}],
-        },
-    )
-    _raise_for_status(resp, "anthropic")
-    data = resp.json()
+ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 
+
+def anthropic_headers(settings: dict) -> dict:
+    return {
+        "x-api-key": settings["anthropic_api_key"],
+        "anthropic-version": "2023-06-01",
+    }
+
+
+def build_anthropic_body(settings: dict, prompt: str) -> dict:
+    return {
+        "model": settings["anthropic_model"],
+        "max_tokens": 8192,
+        "tools": [
+            {"type": "web_search_20260209", "name": "web_search", "max_uses": 3}
+        ],
+        "system": (
+            "Do not output reasoning, thinking, analysis, or progress notes. "
+            "Do not say that you are searching. Return only the final answer "
+            "to the user, with citations when web search is used."
+        ),
+        "messages": [{"role": "user", "content": prompt}],
+    }
+
+
+def parse_anthropic_data(settings: dict, data: dict) -> dict:
     if data.get("stop_reason") == "refusal":
         raise ProviderError("anthropic: request refused by safety classifiers", detail=data)
 
@@ -227,25 +256,39 @@ async def call_anthropic(client: httpx.AsyncClient, settings: dict, prompt: str)
     if not answer:
         raise ProviderError("anthropic: empty answer", detail=data)
 
-    return {"model": data.get("model", model), "answer": answer, "urls": dedupe(urls)}
+    model = data.get("model", settings["anthropic_model"])
+    return {"model": model, "answer": answer, "urls": dedupe(urls)}
+
+
+async def call_anthropic(client: httpx.AsyncClient, settings: dict, prompt: str) -> dict:
+    resp = await client.post(
+        ANTHROPIC_URL,
+        headers=anthropic_headers(settings),
+        json=build_anthropic_body(settings, prompt),
+    )
+    _raise_for_status(resp, "anthropic")
+    return parse_anthropic_data(settings, resp.json())
 
 
 # ---------------------------------------------------------------- xAI Grok
 
-async def call_xai(client: httpx.AsyncClient, settings: dict, prompt: str) -> dict:
-    model = settings["xai_model"]
-    resp = await client.post(
-        "https://api.x.ai/v1/responses",
-        headers={"Authorization": f"Bearer {settings['xai_api_key']}"},
-        json={
-            "model": model,
-            "input": [{"role": "user", "content": prompt}],
-            "tools": [{"type": "web_search"}],
-        },
-    )
-    _raise_for_status(resp, "xai")
-    data = resp.json()
+XAI_BASE = "https://api.x.ai/v1"
+XAI_URL = f"{XAI_BASE}/responses"
 
+
+def xai_headers(settings: dict) -> dict:
+    return {"Authorization": f"Bearer {settings['xai_api_key']}"}
+
+
+def build_xai_body(settings: dict, prompt: str) -> dict:
+    return {
+        "model": settings["xai_model"],
+        "input": [{"role": "user", "content": prompt}],
+        "tools": [{"type": "web_search"}],
+    }
+
+
+def parse_xai_data(settings: dict, data: dict) -> dict:
     answer_parts: list[str] = []
     urls: list[str] = []
     for block in data.get("output") or []:
@@ -269,14 +312,40 @@ async def call_xai(client: httpx.AsyncClient, settings: dict, prompt: str) -> di
     if not urls:
         urls = urls_from_text(answer)
 
-    return {"model": model, "answer": answer, "urls": dedupe(urls)}
+    return {"model": settings["xai_model"], "answer": answer, "urls": dedupe(urls)}
 
+
+async def call_xai(client: httpx.AsyncClient, settings: dict, prompt: str) -> dict:
+    resp = await client.post(
+        XAI_URL,
+        headers=xai_headers(settings),
+        json=build_xai_body(settings, prompt),
+    )
+    _raise_for_status(resp, "xai")
+    return parse_xai_data(settings, resp.json())
+
+
+# ---------------------------------------------------------------- registries
 
 PROVIDERS = {
     "openai": call_openai,
     "gemini": call_gemini,
     "anthropic": call_anthropic,
     "xai": call_xai,
+}
+
+BUILDERS = {
+    "openai": build_openai_body,
+    "gemini": build_gemini_body,
+    "anthropic": build_anthropic_body,
+    "xai": build_xai_body,
+}
+
+PARSERS = {
+    "openai": parse_openai_data,
+    "gemini": parse_gemini_data,
+    "anthropic": parse_anthropic_data,
+    "xai": parse_xai_data,
 }
 
 PROVIDER_KEY_SETTING = {

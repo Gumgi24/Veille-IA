@@ -12,10 +12,16 @@ Fonctionnalités :
 
 - **Campagnes** : import CSV des prompts (`Catégorie, Prompt, Langue, LOC`), planification
   (tous les N jours à HH:MM, date de fin), lancement manuel, pause/reprise.
-- **Exécution parallèle** : les prompts sont envoyés en concurrence (semaphore par
-  fournisseur, timeouts, retries) — plus de limite n8n « un par un ».
+- **Exécution hybride batch / direct** : les prompts **sans proxy** sont regroupés
+  en un lot par fournisseur via leur **Batch API** (OpenAI, Anthropic, Gemini, xAI —
+  ≈ −50% de coût, résultats sous 24h, souvent bien moins) ; les prompts **avec
+  proxy** partent en direct (concurrence bornée par un semaphore par fournisseur,
+  timeouts, retries). Si un batch échoue, ses prompts repassent automatiquement en
+  direct. Les batchs en attente survivent à un redémarrage du serveur (repris au
+  boot). Désactivable dans **Réglages → Mode batch**.
 - **Proxy par prompt** : la colonne `LOC` (ex. `http://user:pass@ip:port`) route la
-  requête API via ce proxy.
+  requête API via ce proxy (mode direct uniquement — un batch s'exécute chez le
+  fournisseur, sans contrôle de l'IP de sortie).
 - **Résolution des redirections Gemini** : les URLs `vertexaisearch.cloud.google.com`
   sont résolues vers l'URL finale (l'originale est conservée en `URL_Originale`).
 - **Export CSV persistant** : `Date, Réponse, Modèle, Prompt, Catégorie_Prompt,
@@ -135,9 +141,10 @@ fichier. Le dossier `data/` est ignoré par git.
 ```
 app/
   main.py       # API FastAPI + service des fichiers statiques
-  db.py         # SQLite (campagnes, prompts, runs, résultats, événements, catégories)
-  providers.py  # clients OpenAI / Gemini / Anthropic / xAI + extraction des sources
-  runner.py     # orchestration d'un run (concurrence, retries, résolution d'URLs)
+  db.py         # SQLite (campagnes, prompts, runs, résultats, batchs, événements, catégories)
+  providers.py  # corps de requête + parsing par fournisseur (partagés direct/batch)
+  batch.py      # adaptateurs Batch API (submit/poll/fetch/cancel) des 4 fournisseurs
+  runner.py     # orchestration d'un run (hybride batch/direct, retries, résolution d'URLs)
   scheduler.py  # APScheduler : un cron par campagne active
 static/         # frontend (vanilla JS + ECharts)
 data/           # base SQLite (créée au premier lancement)

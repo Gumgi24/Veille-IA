@@ -84,6 +84,18 @@ CREATE TABLE IF NOT EXISTS results (
 CREATE INDEX IF NOT EXISTS idx_results_campaign ON results(campaign_id);
 CREATE INDEX IF NOT EXISTS idx_results_run      ON results(run_id);
 
+CREATE TABLE IF NOT EXISTS batches (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id      INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+    campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+    provider    TEXT NOT NULL,                 -- openai | gemini | anthropic | xai
+    ref         TEXT NOT NULL,                 -- JSON: provider-side identifiers
+    payload     TEXT NOT NULL,                 -- JSON: custom_id -> {prompt, categorie, langue}
+    status      TEXT NOT NULL DEFAULT 'submitted',  -- submitted | done | failed | cancelled
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_batches_run ON batches(run_id);
+
 CREATE TABLE IF NOT EXISTS events (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     run_id      INTEGER REFERENCES runs(id) ON DELETE CASCADE,
@@ -112,6 +124,8 @@ DEFAULT_SETTINGS = {
     "request_timeout": "180",    # seconds per API call
     "resolve_timeout": "8",      # seconds per redirect resolution
     "max_retries": "2",
+    "batch_mode": "on",          # on: prompts without a proxy go through Batch APIs
+    "batch_poll_interval": "60", # seconds between batch status checks
 }
 
 SECRET_KEYS = {"openai_api_key", "gemini_api_key", "anthropic_api_key", "xai_api_key",
@@ -190,6 +204,37 @@ def log_event(campaign_id, run_id, level, source, message, detail=None) -> None:
             "VALUES (?, ?, ?, ?, ?, ?)",
             (campaign_id, run_id, level, source, (message or "")[:2000], detail),
         )
+
+
+def create_batch(run_id: int, campaign_id: int, provider: str,
+                 ref: dict, payload: dict) -> int:
+    with connect() as conn:
+        cursor = conn.execute(
+            "INSERT INTO batches(run_id, campaign_id, provider, ref, payload) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (run_id, campaign_id, provider, json.dumps(ref),
+             json.dumps(payload, ensure_ascii=False)),
+        )
+        return cursor.lastrowid
+
+
+def set_batch_status(batch_id: int, status: str) -> None:
+    with connect() as conn:
+        conn.execute("UPDATE batches SET status=? WHERE id=?", (status, batch_id))
+
+
+def pending_batches(run_id: int | None = None) -> list[dict]:
+    query = "SELECT * FROM batches WHERE status='submitted'"
+    args: list = []
+    if run_id is not None:
+        query += " AND run_id=?"
+        args.append(run_id)
+    with connect() as conn:
+        rows = rows_to_dicts(conn.execute(query, args).fetchall())
+    for row in rows:
+        row["ref"] = json.loads(row["ref"])
+        row["payload"] = json.loads(row["payload"])
+    return rows
 
 
 def insert_results(rows: list[dict]) -> None:

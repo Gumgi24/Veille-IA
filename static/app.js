@@ -920,6 +920,23 @@ async function renderSettings() {
           ${plain("max_retries", "Nombre de retries", "number")}
           ${plain("resolve_timeout", "Timeout résolution d'URL (secondes)", "number")}
         </div>
+        <h2>Mode batch</h2>
+        <div class="small muted" style="margin-bottom:12px">
+          Les prompts <b>sans proxy (colonne LOC)</b> sont regroupés en un lot par
+          fournisseur via leur Batch API (≈ −50% de coût, résultats sous 24h,
+          souvent bien moins). Les prompts avec proxy restent en mode direct pour
+          conserver la géolocalisation. En cas d'échec du batch, les prompts
+          repassent automatiquement en direct.
+        </div>
+        <div class="form-grid">
+          <label class="field">Mode batch
+            <select name="batch_mode">
+              <option value="on" ${s.batch_mode !== "off" ? "selected" : ""}>Activé (prompts sans proxy)</option>
+              <option value="off" ${s.batch_mode === "off" ? "selected" : ""}>Désactivé (tout en direct)</option>
+            </select>
+          </label>
+          ${plain("batch_poll_interval", "Intervalle de vérification des batchs (secondes)", "number")}
+        </div>
         <button class="primary" type="submit">Enregistrer</button>
       </form>
     </div>`;
@@ -927,7 +944,7 @@ async function renderSettings() {
   $("#settings-form").onsubmit = async (e) => {
     e.preventDefault();
     const values = {};
-    $$("#settings-form input").forEach((input) => (values[input.name] = input.value));
+    $$("#settings-form input, #settings-form select").forEach((input) => (values[input.name] = input.value));
     await api("/api/settings", { method: "POST", json: { values } });
     toast("Réglages enregistrés");
     renderSettings();

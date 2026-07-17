@@ -25,6 +25,8 @@ STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 async def lifespan(app: FastAPI):
     db.init_db()
     scheduler.start()
+    # Reattach to runs whose Batch API jobs were pending when the server stopped.
+    runner.resume_interrupted_runs()
     yield
     scheduler.shutdown()
 
